@@ -34,9 +34,9 @@ router.post('/', auth, async (req, res) => {
   const { title, date } = req.body;
   try {
     const { rows } = await pool.query(
-      `INSERT INTO sessions (title, date, created_by)
-       VALUES ($1, $2, $3) RETURNING *`,
-      [title, date || new Date().toISOString().split('T')[0], req.user.id]
+      `INSERT INTO sessions (title, date)
+       VALUES ($1, $2) RETURNING *`,
+      [title, date || new Date().toISOString().split('T')[0]]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
