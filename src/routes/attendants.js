@@ -94,8 +94,23 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
     const data = XLSX.utils.sheet_to_json(worksheet);
 
     console.log('Excel data loaded, rows:', data.length);
-    console.log('First row sample:', data[0]);
-    console.log('Available columns:', Object.keys(data[0] || {}));
+    console.log('First row sample:', JSON.stringify(data[0], null, 2));
+    const columns = Object.keys(data[0] || {});
+    console.log('Available columns:', columns);
+
+    // Find column names dynamically
+    const nameCol = columns.find(k => k.toLowerCase().includes('name') && !k.toLowerCase().includes('student'));
+    const emailCol = columns.find(k => k.toLowerCase().includes('email') || k.toLowerCase().includes('mail'));
+    const studentIdCol = columns.find(k => 
+      k.toLowerCase().includes('student') || 
+      k.toLowerCase().includes('id') ||
+      k.toLowerCase().includes('no')
+    );
+
+    console.log('Detected columns:');
+    console.log('  Name column:', nameCol);
+    console.log('  Email column:', emailCol);
+    console.log('  Student ID column:', studentIdCol);
 
     const results = [];
     const errors = [];
@@ -104,13 +119,12 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
       
-      // Map Excel columns to database fields
-      // Based on your screenshot: No, Name, Email, Student ID, Department
-      const name = row['Name'] || row['name'] || row['NAME'] || row[Object.keys(row).find(k => k.toLowerCase().includes('name'))];
-      const email = row['Email'] || row['email'] || row['EMAIL'] || row[Object.keys(row).find(k => k.toLowerCase().includes('email'))];
-      const student_id = row['Student ID'] || row['Student_ID'] || row['student_id'] || row['STUDENT ID'] || row[Object.keys(row).find(k => k.toLowerCase().includes('student'))];
+      // Get values using detected column names
+      const name = nameCol ? row[nameCol] : null;
+      const email = emailCol ? row[emailCol] : null;
+      const student_id = studentIdCol ? row[studentIdCol] : null;
       
-      console.log(`Row ${i + 2}: Name="${name}", StudentID="${student_id}"`);
+      console.log(`Row ${i + 2}: Name="${name}", Email="${email}", StudentID="${student_id}"`);
       
       if (!name || !student_id) {
         console.log(`Row ${i + 2}: Missing required fields`);
