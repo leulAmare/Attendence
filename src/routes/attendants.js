@@ -98,13 +98,32 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
     const columns = Object.keys(data[0] || {});
     console.log('Available columns:', columns);
 
-    // Find column names dynamically
-    const nameCol = columns.find(k => k.toLowerCase().includes('name') && !k.toLowerCase().includes('student'));
-    const emailCol = columns.find(k => k.toLowerCase().includes('email') || k.toLowerCase().includes('mail'));
+    // Map Amharic and English column names
+    // የዶክመንት ቁ = Document Number/ID
+    // ስም = Name
+    // ስልክ = Phone
+    // ፆታ = Gender
+    // የአገልግሎት ክፍል = Department
+    
+    const nameCol = columns.find(k => 
+      k === 'ስም' || // Amharic: Name
+      k.toLowerCase().includes('name') && !k.toLowerCase().includes('student')
+    );
+    
+    const emailCol = columns.find(k => 
+      k === 'ስልክ' || // Amharic: Phone (using as contact)
+      k.toLowerCase().includes('email') || 
+      k.toLowerCase().includes('mail') ||
+      k.toLowerCase().includes('phone') ||
+      k.toLowerCase().includes('ስልክ')
+    );
+    
     const studentIdCol = columns.find(k => 
+      k === 'የዶክመንት ቁ' || // Amharic: Document Number
       k.toLowerCase().includes('student') || 
       k.toLowerCase().includes('id') ||
-      k.toLowerCase().includes('no')
+      k.toLowerCase().includes('no') ||
+      k.toLowerCase().includes('ቁ')
     );
 
     console.log('Detected columns:');
