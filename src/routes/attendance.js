@@ -9,24 +9,41 @@ router.post('/scan', auth, async (req, res) => {
 
   try {
     // 1. Extract student_id from QR code
-    // QR format: "ssu/01/06/01/0004 ክርስቲና አስገል ገ/ማርያም"
-    // Use regex to extract student_id pattern (handles corrupted characters)
+    // QR formats supported:
+    // - "Name|student_id" (new format)
+    // - "ssu/01/06/01/0004 ክርስቲና አስገል ገ/ማርያም" (old format)
+    // - Just student_id (fallback)
     let student_id;
     
-    // Match pattern: ssu/XX/XX/XX/XXXX (where X is digits)
-    const studentIdPattern = /ssu\/\d{2}\/\d{2}\/\d{2}\/\d{4}/i;
-    const match = qr_code.match(studentIdPattern);
-    
-    if (match) {
-      student_id = match[0];
+    // Check for "Name|student_id" format first
+    if (qr_code.includes('|')) {
+      const parts = qr_code.split('|');
+      student_id = parts[1] ? parts[1].trim() : null;
     } else {
-      // Fallback: try to extract first part before space
-      const firstSpace = qr_code.indexOf(' ');
-      if (firstSpace > 0) {
-        student_id = qr_code.substring(0, firstSpace).trim();
+      // Match pattern: ssu/XX/XX/XX/XXXX (where X is digits)
+      const studentIdPattern = /ssu\/\d{2}\/\d{2}\/\d{2}\/\d{4}/i;
+      const match = qr_code.match(studentIdPattern);
+      
+      if (match) {
+        student_id = match[0];
       } else {
-        student_id = qr_code.trim();
+        // Fallback: try to extract first part before space
+        const firstSpace = qr_code.indexOf(' ');
+        if (firstSpace > 0) {
+          student_id = qr_code.substring(0, firstSpace).trim();
+        } else {
+          student_id = qr_code.trim();
+        }
       }
+    }
+
+    // Debug: Log what we're trying to parse
+    console.log('QR Code received:', qr_code);
+    console.log('Extracted student_id:', student_id);
+    
+    // Validate we got a student_id
+    if (!student_id) {
+      return res.status(400).json({ error: 'Could not extract student ID from QR code: ' + qr_code });
     }
 
     // 2. Find attendant by student_id
