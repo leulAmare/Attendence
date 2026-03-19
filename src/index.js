@@ -1,10 +1,14 @@
 const express = require('express');
 const cors = require('cors');
+const multer = require('multer');
 require('dotenv').config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Configure multer for file uploads
+const upload = multer({ dest: 'uploads/' });
 
 app.use('/auth',       require('./routes/auth'));
 app.use('/attendants', require('./routes/attendants'));
