@@ -87,7 +87,7 @@ router.post('/scan', auth, async (req, res) => {
 router.get('/session/:sessionId', auth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT a.name, a.student_id, att.status, att.scanned_at
+      `SELECT a.name, a.student_id, 'present' as status, att.scanned_at
        FROM attendance att
        JOIN attendants a ON a.id = att.attendant_id
        WHERE att.session_id = $1
