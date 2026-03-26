@@ -85,6 +85,7 @@ router.delete('/:id', auth, async (req, res) => {
 router.get('/:id/export/excel', auth, async (req, res) => {
   try {
     const sessionId = req.params.id;
+    const { startDate, endDate } = req.query;
     
     // Get session details
     const { rows: sessionRows } = await pool.query(
@@ -98,15 +99,29 @@ router.get('/:id/export/excel', auth, async (req, res) => {
     
     const session = sessionRows[0];
     
-    // Get attendance data
-    const { rows: attendanceRows } = await pool.query(
-      `SELECT a.name, a.email, a.student_id, att.scanned_at
-       FROM attendance att
-       JOIN attendants a ON a.id = att.attendant_id
-       WHERE att.session_id = $1
-       ORDER BY a.name ASC`,
-      [sessionId]
-    );
+    // Build attendance query with optional date filtering
+    let attendanceQuery = `
+      SELECT a.name, a.email, a.student_id, att.scanned_at
+      FROM attendance att
+      JOIN attendants a ON a.id = att.attendant_id
+      WHERE att.session_id = $1`;
+    
+    let queryParams = [sessionId];
+    
+    if (startDate && endDate) {
+      attendanceQuery += ` AND DATE(att.scanned_at) BETWEEN $${queryParams.length + 1} AND $${queryParams.length + 2}`;
+      queryParams.push(startDate, endDate);
+    } else if (startDate) {
+      attendanceQuery += ` AND DATE(att.scanned_at) >= $${queryParams.length + 1}`;
+      queryParams.push(startDate);
+    } else if (endDate) {
+      attendanceQuery += ` AND DATE(att.scanned_at) <= $${queryParams.length + 1}`;
+      queryParams.push(endDate);
+    }
+    
+    attendanceQuery += ' ORDER BY a.name ASC';
+    
+    const { rows: attendanceRows } = await pool.query(attendanceQuery, queryParams);
     
     // Get all attendants for comparison
     const { rows: allAttendants } = await pool.query(
@@ -116,12 +131,12 @@ router.get('/:id/export/excel', auth, async (req, res) => {
     // Create Excel workbook
     const workbook = XLSX.utils.book_new();
     
-    // Attendance sheet
+    // Attendance sheet - use Phone/Contact instead of Email since data contains phone numbers
     const attendanceData = attendanceRows.map((row, index) => ({
       'No': index + 1,
-      'Name': row.name,
-      'Student ID': row.student_id,
-      'Email': row.email || '',
+      'Name': row.name || '',
+      'Student ID': row.student_id || '',
+      'Phone/Contact': row.email || '',
       'Scan Time': new Date(row.scanned_at).toLocaleString(),
       'Status': 'Present'
     }));
@@ -154,8 +169,8 @@ router.get('/:id/export/excel', auth, async (req, res) => {
     
     const absentData = absentAttendants.map((row, index) => ({
       'No': index + 1,
-      'Name': row.name,
-      'Student ID': row.student_id,
+      'Name': row.name || '',
+      'Student ID': row.student_id || '',
       'Email': row.email || '',
       'Status': 'Absent'
     }));
@@ -169,11 +184,15 @@ router.get('/:id/export/excel', auth, async (req, res) => {
     const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     
     console.log('Excel export completed, buffer size:', excelBuffer.length);
+    console.log('Excel buffer type:', typeof excelBuffer);
+    console.log('Excel buffer constructor:', excelBuffer.constructor.name);
     
     // Set headers for download
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=attendance_${session.title.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date(session.date).toISOString().split('T')[0]}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename="attendance_${session.title.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date(session.date).toISOString().split('T')[0]}.xlsx"`);
+    res.setHeader('Content-Length', excelBuffer.length);
     
+    // Send the buffer directly without wrapping
     res.send(excelBuffer);
     
   } catch (err) {
@@ -185,6 +204,7 @@ router.get('/:id/export/excel', auth, async (req, res) => {
 router.get('/:id/export/pdf', auth, async (req, res) => {
   try {
     const sessionId = req.params.id;
+    const { startDate, endDate } = req.query;
     
     // Get session details
     const { rows: sessionRows } = await pool.query(
@@ -198,15 +218,29 @@ router.get('/:id/export/pdf', auth, async (req, res) => {
     
     const session = sessionRows[0];
     
-    // Get attendance data
-    const { rows: attendanceRows } = await pool.query(
-      `SELECT a.name, a.email, a.student_id, att.scanned_at
-       FROM attendance att
-       JOIN attendants a ON a.id = att.attendant_id
-       WHERE att.session_id = $1
-       ORDER BY a.name ASC`,
-      [sessionId]
-    );
+    // Build attendance query with optional date filtering
+    let attendanceQuery = `
+      SELECT a.name, a.email, a.student_id, att.scanned_at
+      FROM attendance att
+      JOIN attendants a ON a.id = att.attendant_id
+      WHERE att.session_id = $1`;
+    
+    let queryParams = [sessionId];
+    
+    if (startDate && endDate) {
+      attendanceQuery += ` AND DATE(att.scanned_at) BETWEEN $${queryParams.length + 1} AND $${queryParams.length + 2}`;
+      queryParams.push(startDate, endDate);
+    } else if (startDate) {
+      attendanceQuery += ` AND DATE(att.scanned_at) >= $${queryParams.length + 1}`;
+      queryParams.push(startDate);
+    } else if (endDate) {
+      attendanceQuery += ` AND DATE(att.scanned_at) <= $${queryParams.length + 1}`;
+      queryParams.push(endDate);
+    }
+    
+    attendanceQuery += ' ORDER BY a.name ASC';
+    
+    const { rows: attendanceRows } = await pool.query(attendanceQuery, queryParams);
     
     // Get all attendants for comparison
     const { rows: allAttendants } = await pool.query(
@@ -219,13 +253,25 @@ router.get('/:id/export/pdf', auth, async (req, res) => {
     const absentCount = totalCount - presentCount;
     const attendanceRate = totalCount > 0 ? ((presentCount / totalCount) * 100).toFixed(1) : 0;
     
+    // Helper function to escape HTML entities
+    const escapeHtml = (text) => {
+      if (!text) return '';
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    };
+    
     // Generate HTML report
     const html = `
     <!DOCTYPE html>
     <html>
     <head>
-      <meta charset="utf-8">
-      <title>Attendance Report - ${session.title}</title>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Attendance Report - ${escapeHtml(session.title)}</title>
       <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         .header { text-align: center; margin-bottom: 30px; }
@@ -251,7 +297,7 @@ router.get('/:id/export/pdf', auth, async (req, res) => {
     <body>
       <div class="header">
         <h1>Attendance Report</h1>
-        <p><strong>${session.title}</strong></p>
+        <p><strong>${escapeHtml(session.title)}</strong></p>
         <p>Date: ${new Date(session.date).toLocaleDateString()}</p>
         <p>Status: ${session.is_open ? 'Open' : 'Closed'}</p>
       </div>
@@ -274,7 +320,7 @@ router.get('/:id/export/pdf', auth, async (req, res) => {
               <th>No</th>
               <th>Name</th>
               <th>Student ID</th>
-              <th>Email</th>
+              <th>Phone/Contact</th>
               <th>Status</th>
               <th>Scan Time</th>
             </tr>
@@ -283,9 +329,9 @@ router.get('/:id/export/pdf', auth, async (req, res) => {
             ${attendanceRows.map((row, index) => `
               <tr>
                 <td>${index + 1}</td>
-                <td>${row.name}</td>
-                <td>${row.student_id}</td>
-                <td>${row.email || ''}</td>
+                <td>${row.name || ''}</td>
+                <td>${escapeHtml(row.student_id)}</td>
+                <td>${escapeHtml(row.email || '')}</td>
                 <td class="present">Present</td>
                 <td>${new Date(row.scanned_at).toLocaleString()}</td>
               </tr>
@@ -306,9 +352,10 @@ router.get('/:id/export/pdf', auth, async (req, res) => {
     </html>
     `;
     
-    // Set headers for HTML download
-    res.setHeader('Content-Type', 'text/html');
-    res.setHeader('Content-Disposition', `inline; filename=attendance_${session.title.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date(session.date).toISOString().split('T')[0]}.html`);
+    // Set headers for HTML download (can be saved as PDF from browser)
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `inline; filename="attendance_${session.title.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date(session.date).toISOString().split('T')[0]}.html"`);
+    res.setHeader('Content-Length', Buffer.byteLength(html, 'utf8'));
     
     res.send(html);
     
